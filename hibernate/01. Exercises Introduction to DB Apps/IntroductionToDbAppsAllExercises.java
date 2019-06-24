@@ -1,0 +1,532 @@
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Properties;
+
+
+
+// INCLUDES IMPLEMENTATION OF THE WHOLE DATABSE UNDER "initialSetup(stm)" using JDBC
+public class IntroductionToDbAppsAllExercises {
+	static BufferedReader bf = new BufferedReader(new InputStreamReader(System.in));
+	public static void main(String[] args) throws IOException, SQLException {
+		
+	
+		
+		System.out.print("Enter username default (root): ");
+		String user = bf.readLine();
+		user = user.equals("") ? "root" : user;
+		System.out.println();
+		
+		System.out.print("Enter password default (empty):");
+		String password = bf.readLine();
+		System.out.println();
+		
+		Properties props = new Properties();
+		props.setProperty("user", user);
+		props.setProperty("password", password);
+		
+		
+		Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/", props);
+		Statement stm = conn.createStatement();
+		
+		//initialSetup(stm);
+		//getVillainsNames(stm);
+		//getMinionsNames(props); 
+		//addMinion(props, stm);
+		//changeTownNames(stm);
+		//removeVillain(stm);
+		//printAllMinionsNames(stm);
+		//increaseMinionsAge(stm);
+		//increaseAgeStoredProcedure(stm);
+		
+	}
+	
+	// 9. Increase Age Stored Procedure
+	private static void increaseAgeStoredProcedure(Statement stm) throws SQLException, NumberFormatException, IOException {
+		// STORED PROCEDURE
+//		"DELIMITER $$\n" + 
+//		"create procedure usp_get_older(minion_id int)\n" + 
+//		"begin\n" + 
+//		"update minions as m\n" +  
+//		"set m.`age` = m.`age` + 1\n" + 
+//		"where m.`id` = minion_id;\n" + 
+//		"end $$"
+
+		
+		
+		System.out.println("Enter minion ID:");
+		int inputID = Integer.valueOf(bf.readLine());
+		stm.executeQuery("use minions_db");
+		ResultSet result = stm.executeQuery(String.format("select * from minions as m where m.`id` = %d", inputID));
+			if(result.isBeforeFirst()) {
+				stm.executeQuery(String.format("call usp_get_older(%d)", inputID));
+				ResultSet finalResult = stm.executeQuery(String.format("select * from minions as m where m.`id` = %d", inputID));
+				while(finalResult.next()) {
+					System.out.printf("%s %s", finalResult.getString("name"), finalResult.getString("age"));
+				}
+			} else {
+				System.out.println("No such ID");
+			}
+	
+		
+	}
+
+
+	// 8. Increase Minions Age
+	private static void increaseMinionsAge(Statement stm) throws IOException, SQLException {
+		System.out.println("Enter ID numbers:");
+		String ids[] = bf.readLine().split("\\s+");
+		stm.executeUpdate("use minions_db");
+		for(int i = 0; i < ids.length; i++) {
+			int id = Integer.valueOf(ids[i]);
+			ResultSet result = stm.executeQuery(String.format("select * from minions as m where m.`id` = %d", id));
+				if(result.isBeforeFirst()) {
+					stm.executeUpdate(String.format("update minions as m\n" + 
+									  "set m.`name` = lower(m.`name`),\n" + 
+									  "m.`age` = m.`age` + 1\n" + 
+									  "where m.`id` = %d;", id));
+				}
+		}
+		
+		ResultSet finalResult = stm.executeQuery("select * from minions");
+		while(finalResult.next()) {
+			System.out.printf("%s %s %s%n", 
+				finalResult.getString("id"), finalResult.getString("name"), finalResult.getString("age"));
+		}
+	}
+
+	
+	// 7. Print All Minion Names
+	private static void printAllMinionsNames(Statement stm) throws SQLException {
+		stm.executeUpdate("use minions_db");
+		ResultSet result = stm.executeQuery("select m.`name` from minions as m");
+		
+		List<String> allNames = new ArrayList<String>();
+		
+		while(result.next()) {
+				allNames.add(result.getString("name"));
+			
+		}
+		
+		int half = allNames.size() / 2;
+		int start = 0;
+		int end = allNames.size() - 1;
+		for(int i = 0; i < half; i++) {
+			System.out.println(allNames.get(start));
+			System.out.println(allNames.get(end));
+			start++;
+			end--;
+		}
+		
+		if(allNames.size() % 2 != 0) {
+			System.out.println(allNames.get(end));
+		}
+		
+	}
+
+	
+	// 6. *Remove Villain
+	private static void removeVillain(Statement stm) throws NumberFormatException, IOException, SQLException {
+		System.out.println("Enter villain ID");
+		int villainId = Integer.valueOf(bf.readLine());
+		stm.executeUpdate("use minions_db");
+		ResultSet checkIfIdExists = 
+				stm.executeQuery(String.format("select * from villains as v where v.`id` = %d", villainId));
+		if(checkIfIdExists.isBeforeFirst()) {
+			checkIfIdExists.next();
+			String villainName = checkIfIdExists.getString("name");
+			ResultSet result = stm.executeQuery(
+					String.format("select count(*) as `count` from minions_villains as mv where mv.`villain_id` = %d", villainId));
+			if(result.isBeforeFirst()) {
+				result.next();
+				int minionsCount = result.getInt("count");
+				System.out.printf("%s was deleted%n%d minions released%n", villainName, minionsCount);
+			} else {
+				System.out.printf("%s was deleted%n0 minions released%n", villainName);
+			}
+			
+			stm.executeUpdate("alter table minions_villains drop foreign key fk_villains_minions"); // drop foreign key
+			stm.executeUpdate(String.format("delete from villains as v where v.`id` = %d", villainId)); // delete villain 
+			stm.executeUpdate("SET FOREIGN_KEY_CHECKS=0");
+			stm.executeUpdate(
+		"alter table minions_villains add constraint fk_villains_minions foreign key(villain_id) references villains(id)"); // put back foreign key 
+		} else {
+			System.out.println("No such villain was found.");
+		}
+		
+	}
+
+
+	
+	//5. Change Town Names Casing
+	private static void changeTownNames(Statement stm) throws IOException {
+		System.out.println("Enter a country name:");
+		String input = bf.readLine();
+		
+			try {
+				stm.executeUpdate("use minions_db");
+				ResultSet result = stm.executeQuery(String.format
+						("select t.`name` from towns as t where t.`country` = '%s'", input)); // getting towns
+				if(result.isBeforeFirst()) { // checking if not empty 
+					
+					result.last();
+					int size = result.getRow();
+					result.absolute(0);
+					System.out.println(size + " town names were affected.");
+					
+					List <String> allTowns = new ArrayList<String>();
+					while(result.next()) {
+						allTowns.add(result.getString("name").toUpperCase());
+					}
+					System.out.print("[");
+					System.out.print(String.join(",", allTowns)); 
+					System.out.print("]");
+					stm.executeUpdate(String.format // updating db
+							("update towns as t set t.`name` = upper(t.`name`) where t.`country` = '%s'", input));
+					
+				} else {
+					System.out.println("No town names were affected.");
+				}
+				
+			} catch (SQLException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		
+	}
+
+	
+	//4. Add Minion
+	private static void addMinion(Properties props, Statement stm) throws SQLException, IOException {
+		System.out.println("Enter minion details:");
+		String[] minionData = bf.readLine().split("\\s+");
+		String minionName = minionData[0];
+		int age = Integer.valueOf(minionData[1]);
+		String townName = minionData[2];
+		System.out.println("Enter villain name:");
+		String villainName = bf.readLine();
+		int townId = 0;
+		int villainId = 0;
+		int minionId = 0;
+		
+		Connection currentConnection = DriverManager.getConnection("jdbc:mysql://localhost:3306/minions_db", props);
+		
+		String queryTown = "select t.`id`\n" + 
+						   "from towns as t\n" + 
+						   "where t.`name` = ?;\n";
+		
+		PreparedStatement psTown = currentConnection.prepareStatement(queryTown);
+		psTown.setString(1, townName);
+		ResultSet rsTownCheckIfExists = psTown.executeQuery();
+		
+		String queryVillain = "select v.`id` from villains as v where v.`name` = ?;";
+		
+		PreparedStatement psVillain = currentConnection.prepareStatement(queryVillain);
+		psVillain.setString(1, villainName);
+		ResultSet rsVillainCheckIfExists = psVillain.executeQuery();
+		
+		
+		
+		String queryMinion = "select m.`id`\n" +
+						     "from minions as m\n" + 
+						     "where m.`name` = ?;\n";
+		PreparedStatement psMinion = currentConnection.prepareStatement(queryMinion);
+		psMinion.setString(1, minionName);
+		ResultSet rsMinionCheckIfExists = psMinion.executeQuery();
+		
+		// Adding town
+		if(!rsTownCheckIfExists.isBeforeFirst()) {
+			stm.executeUpdate("use minions_db");
+			stm.executeUpdate("insert into towns(name) values('"+ townName + "');");
+			ResultSet result =  stm.executeQuery("select `id` from towns as t where t.`name` ='" + townName + "';");
+			result.next();
+			townId = result.getInt("id"); // grabbing town id 
+			
+			System.out.printf("Town %s was added to the database.%n", townName);
+		} else {
+			rsTownCheckIfExists.next();
+			townId = rsTownCheckIfExists.getInt("id"); // grabbing town id 
+		}
+		
+	
+		// Adding villain
+		if(!rsVillainCheckIfExists.isBeforeFirst()) {
+			stm.executeUpdate("use minions_db");
+			stm.executeUpdate(String.format("insert into villains(name, evilness_factor) values('%s', '%s')",villainName, "evil"));
+			System.out.printf("Villain %s was added to the database.%n", villainName);
+			ResultSet result = stm.executeQuery(String.format("select v.`id` from villains as v where v.`name` = '%s'", villainName));
+			result.next();
+			villainId = result.getInt("id");
+		} else {
+			rsVillainCheckIfExists.next();
+			villainId = rsVillainCheckIfExists.getInt("id");
+		}
+	
+		
+		// Adding minion 
+		if(!rsMinionCheckIfExists.isBeforeFirst()) {
+			stm.executeUpdate("use minions_db");
+			stm.executeUpdate(String.format("insert into minions(name, age, town_id) values('%s', %d, %d)"
+												, minionName, age, townId));
+			System.out.printf("Successfully added %s to be minion of %s%n", minionName, villainName);
+			ResultSet result = stm.executeQuery(String.format("select m.`id` from minions as m where m.`name` = '%s'", minionName));
+			result.next();
+			minionId = result.getInt("id");
+		} else {
+			rsMinionCheckIfExists.next();
+			minionId = rsMinionCheckIfExists.getInt("id");
+		}
+		
+		// Adding to minions_villains
+		stm.executeUpdate(String.format("insert into minions_villains(minion_id, villain_id) values (%d, %d)", 
+																	minionId, villainId));	
+	}
+
+
+	// 3. Get Minion Names
+	private static void getMinionsNames(Properties props) throws SQLException, NumberFormatException, IOException {
+		String query = "select m.`name`, m.`age`, v.`name` as villainName\n" + 
+					   "from villains as v\n" +
+					   "join minions_villains as mv on v.`id` = mv.`villain_id`\n" +
+					   "join minions as m on m.`id` = mv.`minion_id`\n" +
+					   "where mv.villain_id = ?;";
+		Connection currentConnection = DriverManager.getConnection("jdbc:mysql://localhost:3306/minions_db", props);
+		PreparedStatement ps = currentConnection.prepareStatement(query);
+		int id = Integer.valueOf(bf.readLine());
+		ps.setInt(1, id);
+		ResultSet rs = ps.executeQuery(); 
+		
+		int count = 1;
+		boolean in = true;
+		if(rs.next()){
+			rs.absolute(0);
+			while(rs.next()) {
+				if(in){
+					System.out.printf("Villain: %s%n" ,rs.getString("villainName"));
+					in = false;
+				}
+				System.out.printf("%d. %s %s%n",count, rs.getString("name"), rs.getString("age"));
+				count++;
+			}
+		} else {
+			System.out.printf("No villain with ID %d exists in the database.", id);
+		}
+	}
+
+
+
+	// 2. Get Villains’ Names
+	private static void getVillainsNames(Statement stm) throws SQLException {
+		String query = 
+				"select concat(v.`name`, ' ', count(m.`name`)) as `output`\n" + 
+				"from villains as v \n" +
+				"join minions_villains as mv\n" +
+				"on v.`id` = mv.`villain_id`\n" +
+				"join minions as m\n" +
+				"on m.`id` = mv.`minion_id`\n" +
+				"where v.`id` = mv.`villain_id`\n" +
+				"group by v.`name`\n" +
+				"having count(m.`name`) > 15\n" +
+				"order by count(m.`name`) desc;\n";
+		stm.executeUpdate("use minions_db");
+						
+		ResultSet rs = stm.executeQuery(query);
+	
+		while(rs.next()) {
+			System.out.printf("%s%n", rs.getString("output"));
+		}
+		
+		
+	}
+
+
+	
+	
+
+	// 1. Initial Setup 
+	private static void initialSetup(Statement stm) throws SQLException {
+		stm.executeUpdate("CREATE DATABASE minions_db");
+		stm.executeUpdate("use minions_db" );
+		stm.executeUpdate("CREATE TABLE towns(" + 
+                          "id INT(11) PRIMARY KEY AUTO_INCREMENT," +
+                          "name VARCHAR(20) NOT NULL ," + 
+                          "country VARCHAR(20));");
+		
+		stm.executeUpdate("CREATE TABLE villains(" + 
+                          "id INT(11) PRIMARY KEY AUTO_INCREMENT," +
+                          "name VARCHAR(20) NOT NULL," +
+                          "evilness_factor ENUM('good', 'bad', 'evil', 'super evil'));");
+		
+		stm.executeUpdate("CREATE TABLE minions(" + 
+                          "id INT(11) PRIMARY KEY AUTO_INCREMENT," +
+                          "name VARCHAR(20) NOT NULL," +
+                          "age INT(11) NOT NULL ," +
+                          "town_id INT(11)," +
+                          "CONSTRAINT fk_minions_towns FOREIGN KEY (town_id) REFERENCES towns(id))");
+		
+		
+		stm.executeUpdate("CREATE TABLE minions_villains(" +
+                           "minion_id INT(11)," +
+                           "villain_id INT(11)," +
+                           "CONSTRAINT fk_minions_villains FOREIGN KEY (minion_id) REFERENCES minions(id)," +
+                           "CONSTRAINT fk_villains_minions FOREIGN KEY (villain_id) REFERENCES villains(id));");
+		
+		stm.executeUpdate("insert into towns (id, name, country)" + "values (1, 'Sofia', 'Bulgaria');");
+		stm.executeUpdate("insert into towns (id, name, country)" + "values (2, 'Plovdiv', 'Bulgaria');"); 
+		stm.executeUpdate( "insert into towns (id, name, country)"  + "values (3, 'Burgas', 'Bulgaria');"); 
+		stm.executeUpdate("insert into towns (id, name, country)"  + "values (4, 'Berlin', 'Germany');"); 
+		stm.executeUpdate( "insert into towns (id, name, country)" + "values (5, 'London', 'England');");
+		
+		stm.executeUpdate("insert into villains (id, name, evilness_factor) values (1, 'Carl', 'good');");
+		stm.executeUpdate("insert into villains (id, name, evilness_factor) values (2, 'Crissy', 'bad');");
+		stm.executeUpdate("insert into villains (id, name, evilness_factor) values (3, 'Arabele', 'bad');");
+		stm.executeUpdate("insert into villains (id, name, evilness_factor) values (4, 'Sheeree', 'evil');");
+		stm.executeUpdate("insert into villains (id, name, evilness_factor) values (5, 'Flo', 'super evil');");
+		stm.executeUpdate("insert into villains (id, name, evilness_factor) values (6, 'Minionless', 'good');");
+		
+		
+		stm.executeUpdate("insert into minions (id, name, age, town_id) "
+				+ "values (1, 'May', 44, 4)," +
+                         "(2, 'Brina', 43, 5)," +
+                         "(3, 'Roslyn', 50, 4)," +
+                         "(4, 'Virgie', 53, 2)," +
+                         "(5, 'Nananne', 23, 1)," + 
+                         "(6, 'Gayleen', 14, 1)," + 
+                         "(7, 'Ole', 53, 1)," + 
+                         "(8, 'Eldredge', 32, 2)," + 
+                         "(9, 'Marge', 16, 4)," + 
+                         "(10, 'Vi', 49, 3)," + 
+                         "(11, 'Ilka', 17, 4)," +
+                         "(12, 'Pancho', 53, 5)," + 
+                         "(13, 'Stephi', 31, 5)," + 
+                         "(14, 'Cobby', 21, 5)," + 
+                         "(15, 'Florence', 67, 5)," + 
+                         "(16, 'Ardeen', 52, 3)," + 
+                         "(17, 'Sax', 28, 3)," + 
+                         "(18, 'Shurlocke', 33, 3)," + 
+                         "(19, 'Orsola', 16, 3)," + 
+                         "(20, 'Anselm', 59, 1)," + 
+                         "(21, 'Noble', 17, 3)," + 
+                         "(22, 'Colin', 13, 4)," + 
+                         "(23, 'Minette', 29, 4)," + 
+                         "(24, 'Katine', 23, 4)," + 
+                         "(25, 'Chevalier', 53, 2)," + 
+                         "(26, 'Abbe', 17, 5)," + 
+                         "(27, 'Skipp', 16, 1)," + 
+                         "(28, 'Wilhelm', 11, 4)," + 
+                         "(29, 'Madelyn', 41, 1)," + 
+                         "(30, 'Bryant', 50, 4)," + 
+                         "(31, 'Davey', 22, 4)," + 
+                         "(32, 'Jasen', 68, 4)," + 
+                         "(33, 'Dominique', 67, 2)," + 
+                         "(34, 'Mella', 63, 4)," + 
+                         "(35, 'Gaye', 22, 4)," + 
+                         "(36, 'Pearl', 48, 2)," + 
+                         "(37, 'Rozella', 20, 4)," + 
+                         "(38, 'Marika', 47, 1)," + 
+                         "(39, 'Annabella', 34, 4)," + 
+						 "(40, 'Jeffry', 48, 3)," + 
+						 "(41, 'Fiann', 51, 2)," + 
+						 "(42, 'Burgess', 15, 4)," + 
+						 "(43, 'Loydie', 51, 2)," + 
+						 "(44, 'Hermia', 56, 4)," + 
+						 "(45, 'Reggy', 34, 2)," + 
+						 "(46, 'Norah', 19, 4)," + 
+						 "(47, 'Lu', 26, 4)," + 
+						 "(48, 'Theodor', 66, 4)," + 
+						 "(49, 'Tara', 40, 5)," + 
+						 "(50, 'Brandie', 32, 3)");
+		
+		
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (39, 1);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (8, 1);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (40, 4);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (6, 2);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (38, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (35, 1);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (27, 2);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (2, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (40, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (11, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (40, 2);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (10, 1);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (37, 2);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (31, 3);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (8, 1);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (48, 2);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (19, 3);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (28, 2);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (2, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (25, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (37, 1);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (12, 2);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (44, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (47, 3);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (22, 4);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (4, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (45, 3);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (46, 2);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (44, 2);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (35, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (48, 1);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (11, 2);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (37, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (38, 4);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (3, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (19, 1);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (37, 3);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (50, 4);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (21, 1);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (34, 3);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (29, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (43, 4);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (10, 2);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (34, 2);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (29, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (17, 4);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (11, 2);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (41, 1);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (23, 1);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (22, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (3, 1);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (22, 3);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (24, 2);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (30, 3);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (41, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (38, 1);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (12, 1);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (48, 3);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (37, 3);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (30, 2);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (7, 3);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (25, 4);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (26, 1);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (40, 3);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (44, 4);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (45, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (20, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (41, 4);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (40, 4);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (40, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (24, 5);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (17, 4);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (8, 1);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (13, 3);");
+		stm.executeUpdate("insert into minions_villains (minion_id, villain_id) values (42, 3);");
+		
+	}
+	
+	
+	
+	
+
+}
